@@ -15,13 +15,14 @@ void mostrar_menu() {
     printf("6. Criar indices\n");
     printf("7. Buscar joia usando indice\n");
     printf("8. Buscar compra usando indice\n");
-    printf("9. Consultas especiais\n");
     printf("10. Inserir nova joia\n");
     printf("11. Remover joia\n");
     printf("12. Inserir nova compra\n");
     printf("13. Remover compra\n");
     printf("14. Mostrar indice de joias\n");
     printf("15. Mostrar indice de compras\n");
+    printf("16. gerar_indice_parcial a cada 10 registros\n");
+    printf("18. gerar tabela hash em memoria e buscar por id usuario\n");
     printf("0. Sair\n");
     printf("Escolha uma opcao: ");
 }
@@ -121,12 +122,8 @@ int main() {
             case 8:
                 printf("Digite o numero do indice: ");
                 scanf("%ld", &idx);
-                chave = pesquisa_por_idx_arqInd("compras.idx", idx);
+                chave = pesquisa_por_idx_arqInd("indice_parcial_compras.idx", idx);
                 printf("%lld", chave);
-                break;
-
-            case 9:
-                /*implementar*/
                 break;
 
             case 10:
@@ -151,8 +148,32 @@ int main() {
                 break;
 
             case 15:
-                mostrar_indice_compras("compras.idx");
+                mostrar_indice_compras("indice_parcial_compras.idx"); //indice parcial trabalho 2
                 break;
+            case 16:
+                gerar_indice_parcial10("compras.dat", "indice_parcial_compras.idx");
+                break;
+            //case 17:
+              //  mostrar_indice_parcial("indice_parcial_compras.idx");
+                //break;
+            case 18: {
+                HashTable ht;
+                inicializar_hash(&ht);
+                    construir_hash_por_coluna("compras.dat", &ht);
+
+                    long long cliente;
+                    printf("Digite o id_usuario que deseja buscar: ");
+                    scanf("%lld", &cliente);
+
+                    HashNode* resultados = hash_buscar(&ht, cliente);
+                    if (resultados)
+                        imprimir_resultados(resultados);
+                    else
+                        printf("Nenhum registro encontrado.\n");
+
+                    break;
+}
+
 
             case 0:
                 printf("Saindo do sistema...\n");

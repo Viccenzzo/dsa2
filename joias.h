@@ -43,6 +43,19 @@ typedef struct {
     long posicao;
 } IndiceParcial;
 
+//estrutura para hash
+typedef struct HashNode {
+    long long chaveBusca;    // ex: id_cliente, quantidade, etc.
+    long posicao;            // posição no arquivo de dados
+    struct HashNode* next;
+} HashNode;
+#define TAM_HASH 100003  // grande e primo → menos colisões
+
+typedef struct {
+    HashNode* tabela[TAM_HASH];
+} HashTable;
+
+
 // funcoes para joias
 int inserir_joias_do_csv(const char* arquivo_csv, const char* arquivo_dados);
 int mostrar_joias(const char* arquivo_dados);
@@ -50,12 +63,14 @@ int buscar_joia_binaria(const char* arquivo_dados, long long id_produto, Joia* j
 int consultar_joia(const char* arquivo_dados, long long id_produto);
 int criar_indice_joias(const char* arquivo_dados, const char* arquivo_indice);
 
+
 // funcoes para compras
 int inserir_compras_do_csv(const char* arquivo_csv, const char* arquivo_dados);
 int mostrar_compras(const char* arquivo_dados);
 int buscar_compra_binaria(const char* arquivo_dados, long long id_pedido, Compra* compra);
 int consultar_compra(const char* arquivo_dados, long long id_pedido);
 int criar_indice_compras(const char* arquivo_dados, const char* arquivo_indice);
+void gerar_indice_parcial10(const char* arquivo_dados, const char* arquivo_indice);
 
 // funcoes utilitarias
 void preencher_string(char* str, int tamanho);
@@ -70,6 +85,13 @@ int comparar_indices(const void* a, const void* b);
 // funcoes para visualizar indices
 void mostrar_indice_joias(const char* arquivo_indice);
 void mostrar_indice_compras(const char* arquivo_indice);
+void mostrar_indice_parcial(const char* arquivo_indice);
+void inicializar_hash(HashTable* ht);
+void hash_inserir(HashTable* ht, long long chaveBusca, long posicao);
+void construir_hash_por_coluna(const char* arquivo_dados, HashTable* ht);
+HashNode* hash_buscar(HashTable* ht, long long chaveBusca);
+void imprimir_resultados(HashNode* lista);
+
 // funcoes para pesquisar por indices
 long long pesquisa_por_idx_arqInd(const char* arquivo_indice,long idx);
 // insercoes 

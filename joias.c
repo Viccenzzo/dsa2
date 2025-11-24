@@ -653,6 +653,8 @@ long long pesquisa_por_idx_arqInd(const char* arquivo_indice, long idx) {
 
     long left = 0, right = nRegistros - 1;
     IndiceParcial entrada;
+    long long melhor_chave = 0;
+    long melhor_pos = -1;
 
     while (left <= right) {
         long mid = (left + right) / 2;
@@ -662,16 +664,26 @@ long long pesquisa_por_idx_arqInd(const char* arquivo_indice, long idx) {
 
         if (entrada.posicao == idx) {
             fclose(fp);
-            return entrada.chave; // achou a chave correspondente
-        } else if (entrada.posicao < idx) {
+            return entrada.chave; // Encontrou posição EXATA (raro em índice parcial)
+        }
+        else if (entrada.posicao < idx) {
+            // possível candidato
+            melhor_chave = entrada.chave;
+            melhor_pos = entrada.posicao;
             left = mid + 1;
-        } else {
+        }
+        else {
             right = mid - 1;
         }
     }
 
     fclose(fp);
-    return 0; // não encontrado
+
+    // Se nenhum índice é <= idx, não há como buscar
+    if (melhor_pos == -1)
+        return 0;
+
+    return melhor_chave;
 }
 
 int inserir_joia_ordenada(const char* arquivo_dados, const char* arquivo_indice) {
@@ -928,7 +940,6 @@ int remove_compra(const char* arquivo_dados, const char* arquivo_indice) {
     fread(indices, sizeof(IndiceParcial), qtd_indices, idx);
     fclose(idx);
 
-    // Filtrar (sem reordenar)
     FILE* idx_novo = fopen(arquivo_indice, "wb");
     if (!idx_novo) {
         printf("Erro ao reabrir arquivo de índice para escrita.\n");
@@ -953,7 +964,6 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
     printf("Digite o ID do produto que deseja remover: ");
     scanf("%lld", &id_busca);
 
-    // 1️⃣ Abrir o arquivo de índice
     FILE* idx = fopen(arquivo_indice, "rb");
     if (!idx) {
         printf("Erro ao abrir o arquivo de índice.\n");
@@ -964,7 +974,6 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
     long posicao_dado = -1;
     long qtd_indices = 0;
 
-    // 2️⃣ Procurar a chave no índice
     while (fread(&entrada, sizeof(IndiceParcial), 1, idx) == 1) {
         if (entrada.chave == id_busca) {
             posicao_dado = entrada.posicao;
@@ -978,7 +987,6 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
         return 0;
     }
 
-    // 3️⃣ Abrir o arquivo de dados e marcar como "removido"
     FILE* dados = fopen(arquivo_dados, "r+b");
     if (!dados) {
         printf("Erro ao abrir o arquivo de dados.\n");
@@ -994,7 +1002,6 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
         return -1;
     }
 
-    // 4️⃣ Marcar campos como "REMOVIDO"
     removida.id_produto = -1;
     removida.id_categoria = -1;
     removida.id_marca = -1;
@@ -1006,14 +1013,12 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
     strcpy(removida.pedra_preciosa, "");
     removida.quebra_linha = '\n';
 
-    // Voltar o ponteiro e regravar
     fseek(dados, posicao_dado * sizeof(Joia), SEEK_SET);
     fwrite(&removida, sizeof(Joia), 1, dados);
     fclose(dados);
 
     printf("Registro ID %lld marcado como removido no arquivo de dados.\n", id_busca);
 
-    // 5️⃣ Remover a entrada do índice
     idx = fopen(arquivo_indice, "rb");
     if (!idx) {
         printf("Erro ao reabrir o arquivo de índice.\n");
@@ -1049,6 +1054,143 @@ int remove_joia(const char* arquivo_dados, const char* arquivo_indice) {
     printf("Entrada removida do índice com sucesso.\n");
     return 1;
 }
+
+void gerar_indice_parcial10(const char* arquivo_dados, const char* arquivo_indice) {
+    FILE* dados = fopen(arquivo_dados, "rb");
+    if (!dados) {
+        printf("Erro ao abrir arquivo de dados: %s\n", arquivo_dados);
+        return;
+    }
+    
+    FILE* indice = fopen(arquivo_indice, "wb");
+    if (!indice) {
+        printf("Erro ao criar arquivo de indice: %s\n", arquivo_indice);
+        fclose(dados);
+        return;
+    }
+
+    Compra compra;
+    IndiceParcial entrada_indice;
+    int posicao = 0;
+    int qtd_indices = 0;
+
+    while (fread(&compra, sizeof(Compra), 1, dados) == 1) {
+
+        if (posicao % 10 == 0) {
+            entrada_indice.chave = compra.id_pedido;
+            entrada_indice.posicao = posicao;
+
+            fwrite(&entrada_indice, sizeof(IndiceParcial), 1, indice);
+            qtd_indices++;
+        }
+
+        posicao++;
+    }
+
+    fclose(dados);
+    fclose(indice);
+
+    // Reabrir para ordenar
+    FILE* indice_read = fopen(arquivo_indice, "rb");
+    if (!indice_read) {
+        printf("Erro ao abrir arquivo de indice para ordenacao\n");
+        return;
+    }
+
+    IndiceParcial* indices = malloc(qtd_indices * sizeof(IndiceParcial));
+    if (!indices) {
+        printf("Erro de memoria\n");
+        fclose(indice_read);
+        return;
+    }
+
+    fread(indices, sizeof(IndiceParcial), qtd_indices, indice_read);
+    fclose(indice_read);
+
+    // Ordenar por chave
+    qsort(indices, qtd_indices, sizeof(IndiceParcial), comparar_indices);
+
+    // Gravar índice ordenado
+    FILE* indice_write = fopen(arquivo_indice, "wb");
+    if (!indice_write) {
+        printf("Erro ao reescrever indice ordenado\n");
+        free(indices);
+        return;
+    }
+
+    fwrite(indices, sizeof(IndiceParcial), qtd_indices, indice_write);
+
+    fclose(indice_write);
+    free(indices);
+
+    printf("Indice parcial criado: %d entradas (1 a cada 10 registros)\n", qtd_indices);
+    
+}
+
+unsigned int hash_ll(long long x) {
+    x = ((x >> 33) ^ x) * 0xff51afd7ed558ccdULL;
+    x = ((x >> 33) ^ x) * 0xc4ceb9fe1a85ec53ULL;
+    x = (x >> 33) ^ x;
+    return (unsigned int)(x % TAM_HASH);
+}
+
+void inicializar_hash(HashTable* ht) {
+    for (int i = 0; i < TAM_HASH; i++)
+        ht->tabela[i] = NULL;
+}
+
+void hash_inserir(HashTable* ht, long long chaveBusca, long posicao) {
+    unsigned int h = hash_ll(chaveBusca);
+
+    HashNode* novo = (HashNode*)malloc(sizeof(HashNode));
+    novo->chaveBusca = chaveBusca;
+    novo->posicao = posicao;
+    novo->next = ht->tabela[h];
+
+    ht->tabela[h] = novo;
+}
+void construir_hash_por_coluna(const char* arquivo_dados, HashTable* ht) {
+
+    FILE* fp = fopen(arquivo_dados, "rb");
+    if (!fp) {
+        printf("Erro ao abrir %s\n", arquivo_dados);
+        return;
+    }
+
+    inicializar_hash(ht);
+
+    Compra compra;
+    long pos = 0;
+
+    while (fread(&compra, sizeof(Compra), 1, fp) == 1) {
+
+        long long chave = compra.id_usuario;
+
+        hash_inserir(ht, chave, pos);
+
+        pos++;
+    }
+
+    fclose(fp);
+
+    printf("Índice hash em memória criado com %ld entradas\n", pos);
+}
+
+
+HashNode* hash_buscar(HashTable* ht, long long chaveBusca) {
+    unsigned int h = hash_ll(chaveBusca);
+    return ht->tabela[h];
+}
+void imprimir_resultados(HashNode* lista) {
+    while (lista) {
+        printf("Posição no arquivo: %ld\n", lista->posicao);
+        lista = lista->next;
+    }
+}
+
+
+
+
 
 
 
