@@ -1249,33 +1249,47 @@ int buscar_posicao_na_arvore_b(ArvoreB* arvore, long long chave_busca){
 
     // desce da raiz ate uma folha em nos internos, comparamos a chave buscada com as chaves do no
     while(!no_atual->eh_folha){
-        int indice = 0, i;
+        int indice = 0;
+        int i;
 
         // busca linear nas chaves do no interno para encontrar o filho correto
+        // filhos[0] contem chaves < chaves[0] (se chaves[0] existir)
+        // filhos[1] contem chaves >= chaves[0] e < chaves[1] (se chaves[1] existir)
+        // filhos[2] contem chaves >= chaves[1] e < chaves[2] (se chaves[2] existir)
+        // ...
+        // filhos[quantidade_chaves] contem chaves >= chaves[quantidade_chaves-1]
+        
+        // percorre todas as chaves separadoras
         for(i = 0; i < no_atual->quantidade_chaves; i++){
             if(chave_busca < no_atual->chaves[i]){
-                indice = i;  // chave esta na subarvore esquerda
+                // chave esta na subarvore do filho[i]
+                indice = i;
                 break;
             }
-            indice = i + 1;  // chave pode estar na subarvore direita
+            // se chave_busca >= chaves[i], continua procurando
+            indice = i + 1;  // atualiza para o proximo filho
+        }
+        // se nao encontrou nenhuma chave maior, indice sera quantidade_chaves (ultimo filho)
+
+        // validar indice
+        if(indice < 0 || indice > no_atual->quantidade_chaves){
+            return -1;  // indice invalido
         }
 
-        if(indice > no_atual->quantidade_chaves){
-            indice = no_atual->quantidade_chaves;
+        // verificar se o filho existe
+        if(!no_atual->filhos[indice]){
+            return -1;  // filho nao existe
         }
 
         no_atual = no_atual->filhos[indice];
-        if(!no_atual){
-            return -1;  // filho nao existe
-        }
     }
     
-    // busca binaria
+    // busca binaria na folha
     int esquerda = 0;
     int direita = no_atual->quantidade_chaves - 1;
     
     while(esquerda <= direita){
-        int meio =(esquerda + direita) / 2;
+        int meio = (esquerda + direita) / 2;
         
         if(no_atual->chaves[meio] == chave_busca){
             // retorna a posicao no arquivo associada
@@ -1719,6 +1733,30 @@ void mostrar_arvore_b(ArvoreB* arvore){
     printf("\n");
 }
 
+// funcao auxiliar para buscar chave em todas as folhas (debug)
+void buscar_chave_em_folhas_recursivo(NoArvoreB* no, long long chave_busca, int* encontrado, long* posicao_encontrada){
+    if(!no) return;
+    
+    if(no->eh_folha){
+        // busca linear na folha
+        for(int i = 0; i < no->quantidade_chaves; i++){
+            if(no->chaves[i] == chave_busca){
+                *encontrado = 1;
+                *posicao_encontrada = no->posicoes_arquivo[i];
+                return;
+            }
+        }
+    } else {
+        // recursao nos filhos
+        for(int i = 0; i <= no->quantidade_chaves; i++){
+            if(no->filhos[i]){
+                buscar_chave_em_folhas_recursivo(no->filhos[i], chave_busca, encontrado, posicao_encontrada);
+                if(*encontrado) return;
+            }
+        }
+    }
+}
+
 // consulta uma joia usando a arvore b como indice em memoria
 void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, long long id_produto){
     if(!arvore || !arvore->raiz){
@@ -1730,9 +1768,18 @@ void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, lon
     long posicao = buscar_posicao_na_arvore_b(arvore, id_produto);
     
     if(posicao == -1){
-        printf("Joia com ID Produto %lld nao encontrada na arvore B.\n", id_produto);
-        printf("Tente usar a opcao 4(Busca binaria direta) para verificar se o registro existe.\n");
-        return;
+        // se a busca normal falhou, tenta busca recursiva em todas as folhas (fallback)
+        int encontrado = 0;
+        long posicao_fallback = -1;
+        buscar_chave_em_folhas_recursivo(arvore->raiz, id_produto, &encontrado, &posicao_fallback);
+        
+        if(encontrado){
+            posicao = posicao_fallback;
+        } else {
+            printf("Joia com ID Produto %lld nao encontrada na arvore B.\n", id_produto);
+            printf("Tente usar a opcao 4(Busca binaria direta) para verificar se o registro existe.\n");
+            return;
+        }
     }
     
     // abrir o arquivo de dados e posicionar no registro encontrado
