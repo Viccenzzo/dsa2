@@ -1,6 +1,5 @@
 #include "joias.h"
 
-
 //gcc -Wall -Wextra -g3 main.c joias.c -o main.exe
 // /"
 
@@ -23,6 +22,9 @@ void mostrar_menu() {
     printf("15. Mostrar indice de compras\n");
     printf("16. gerar_indice_parcial a cada 10 registros\n");
     printf("18. gerar tabela hash em memoria e buscar por id usuario\n");
+    printf("19. Criar arvore B em memoria para joias\n");
+    printf("20. Buscar joia usando arvore B\n");
+    printf("21. Mostrar estrutura da arvore B\n");
     printf("0. Sair\n");
     printf("Escolha uma opcao: ");
 }
@@ -77,6 +79,7 @@ int main() {
     long long id;
     long long chave;
     long idx;
+    static ArvoreB arvore_joias = {NULL, 0};  // arvore B para joias (mantida em memoria)
     printf("=== SISTEMA INICIANDO ===\n");
 
     do {
@@ -172,8 +175,42 @@ int main() {
                         printf("Nenhum registro encontrado.\n");
 
                     break;
-}
+            }
 
+            case 19: {
+                printf("\n=== CRIANDO ARVORE B PARA JOIAS ===\n");
+                // se ja existir uma arvore, destruir a anterior
+                if(arvore_joias.raiz){
+                    printf("Destruindo arvore anterior...\n");
+                    destruir_arvore_b(arvore_joias.raiz);
+                    arvore_joias.raiz = NULL;
+                    arvore_joias.total_registros = 0;
+                }
+                printf("Iniciando construcao da arvore...\n");
+                construir_arvore_b_do_arquivo("joias.dat", &arvore_joias);
+                printf("Construcao concluida.\n");
+                break;
+            }
+
+            case 20: {
+                if(!arvore_joias.raiz){
+                    printf("Arvore B nao foi criada ainda. Use a opcao 19 primeiro.\n");
+                    break;
+                }
+                printf("Digite o ID do Produto para buscar: ");
+                scanf("%lld", &id);
+                consultar_joia_por_arvore_b(&arvore_joias, "joias.dat", id);
+                break;
+            }
+
+            case 21: {
+                if(!arvore_joias.raiz){
+                    printf("Arvore B nao foi criada ainda. Use a opcao 19 primeiro.\n");
+                    break;
+                }
+                mostrar_arvore_b(&arvore_joias);
+                break;
+            }
 
             case 0:
                 printf("Saindo do sistema...\n");

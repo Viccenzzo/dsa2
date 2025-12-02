@@ -55,6 +55,28 @@ typedef struct {
     HashNode* tabela[TAM_HASH];
 } HashTable;
 
+// estrutura para arvore B (simples)
+#define ORDEM_ARVORE_B 5  // ordem da arvore (maximo de chaves por no = ORDEM-1)
+
+// no da arvore B (todos os nos tem a mesma estrutura)
+typedef struct NoArvoreB {
+    bool eh_folha;                          // true se for no folha, false se for interno
+    int quantidade_chaves;                  // numero de chaves atualmente no no
+    long long chaves[ORDEM_ARVORE_B - 1];   // array de chaves (id_produto)
+    
+    // ponteiros para filhos (usado apenas em nos internos)
+    struct NoArvoreB* filhos[ORDEM_ARVORE_B];
+    
+    // posicoes no arquivo de dados (usado apenas em nos folha)
+    long posicoes_arquivo[ORDEM_ARVORE_B - 1];
+} NoArvoreB;
+
+// estrutura da arvore B completa
+typedef struct {
+    NoArvoreB* raiz;                        // ponteiro para a raiz da arvore
+    int total_registros;                    // total de registros indexados
+} ArvoreB;
+
 
 // funcoes para joias
 int inserir_joias_do_csv(const char* arquivo_csv, const char* arquivo_dados);
@@ -100,4 +122,13 @@ int inserir_compra_ordenada(const char* arquivo_dados, const char* arquivo_indic
 //remocoes 
 int remove_compra(const char* arquivo_dados, const char* arquivo_indice);
 int remove_joia(const char* arquivo_dados, const char* arquivo_indice);
+
+// funcoes para arvore B
+NoArvoreB* criar_no_arvore_b(bool eh_folha);
+void destruir_arvore_b(NoArvoreB* no);
+void inicializar_arvore_b(ArvoreB* arvore);
+int buscar_posicao_na_arvore_b(ArvoreB* arvore, long long chave_busca);
+void construir_arvore_b_do_arquivo(const char* arquivo_dados, ArvoreB* arvore);
+void mostrar_arvore_b(ArvoreB* arvore);
+void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, long long id_produto);
 #endif

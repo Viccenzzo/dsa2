@@ -1176,7 +1176,6 @@ void construir_hash_por_coluna(const char* arquivo_dados, HashTable* ht) {
     printf("Índice hash em memória criado com %ld entradas\n", pos);
 }
 
-
 HashNode* hash_buscar(HashTable* ht, long long chaveBusca) {
     unsigned int h = hash_ll(chaveBusca);
     return ht->tabela[h];
@@ -1188,11 +1187,581 @@ void imprimir_resultados(HashNode* lista) {
     }
 }
 
+// cria um novo no da arvore b (pode ser folha ou no interno)
+NoArvoreB* criar_no_arvore_b(bool eh_folha){
+    int i;
+    NoArvoreB* novo_no =(NoArvoreB*)malloc(sizeof(NoArvoreB));
+    if(!novo_no){
+        printf("Erro de memoria ao criar no da arvore B\n");
+        return NULL;
+    }
+    
+    // inicializa os campos basicos do no
+    novo_no->eh_folha = eh_folha;  // indica se e um no folha (sem filhos) ou interno
+    novo_no->quantidade_chaves = 0;  // contador de chaves atualmente no no
+    
+    // inicializa o array de chaves e posicoes no arquivo
+    for(i = 0; i < ORDEM_ARVORE_B - 1; i++){
+        novo_no->chaves[i] = 0;
+        novo_no->posicoes_arquivo[i] = -1;
+    }
 
+    // inicializa o array de ponteiros para filhos
+    for(i = 0; i < ORDEM_ARVORE_B; i++){
+        novo_no->filhos[i] = NULL;
+    }
+    
+    return novo_no;
+}
 
+// destroi recursivamente a arvore b liberando toda a memoria alocada
+void destruir_arvore_b(NoArvoreB* no){
+    int i;
+    if(!no){
+        return;
+    }
+    // se nao for folha, precisa destruir os filhos primeiro
+    if(!no->eh_folha){
+        for(i = 0; i <= no->quantidade_chaves; i++){
+            if(no->filhos[i]){
+                destruir_arvore_b(no->filhos[i]);  // chamada recursiva para cada filho
+            }
+        }
+    }
+    
+    // apos destruir todos libera o proprio no
+    free(no);
+}
 
+// inicializa uma arvore b vazia
+void inicializar_arvore_b(ArvoreB* arvore){
+    arvore->raiz = NULL;
+    arvore->total_registros = 0;
+}
 
+// busca uma chave na arvore b e retorna a posicao do registro no arquivo
+int buscar_posicao_na_arvore_b(ArvoreB* arvore, long long chave_busca){
+    if(!arvore || !arvore->raiz){
+        return -1;  // arvore vazia, chave nao encontrada
+    }
+    
+    NoArvoreB* no_atual = arvore->raiz;
 
+    // desce da raiz ate uma folha em nos internos, comparamos a chave buscada com as chaves do no
+    while(!no_atual->eh_folha){
+        int indice = 0, i;
 
+        // busca linear nas chaves do no interno para encontrar o filho correto
+        for(i = 0; i < no_atual->quantidade_chaves; i++){
+            if(chave_busca < no_atual->chaves[i]){
+                indice = i;  // chave esta na subarvore esquerda
+                break;
+            }
+            indice = i + 1;  // chave pode estar na subarvore direita
+        }
 
+        if(indice > no_atual->quantidade_chaves){
+            indice = no_atual->quantidade_chaves;
+        }
 
+        no_atual = no_atual->filhos[indice];
+        if(!no_atual){
+            return -1;  // filho nao existe
+        }
+    }
+    
+    // busca binaria
+    int esquerda = 0;
+    int direita = no_atual->quantidade_chaves - 1;
+    
+    while(esquerda <= direita){
+        int meio =(esquerda + direita) / 2;
+        
+        if(no_atual->chaves[meio] == chave_busca){
+            // retorna a posicao no arquivo associada
+            return no_atual->posicoes_arquivo[meio];
+        }else if(no_atual->chaves[meio] < chave_busca){
+            // chave buscada eh maior, buscar na metade direita
+            esquerda = meio + 1;
+        }else{
+            // chave buscada eh menor, buscar na metade esquerda
+            direita = meio - 1;
+        }
+    }
+    
+    return -1;  // chave nao encontrada na folha
+}
+
+// insere uma chave e sua posicao no arquivo em um no folhaa
+int inserir_chave_no_folha(NoArvoreB* no_folha, long long chave, long posicao){
+
+    int i;
+
+    if(no_folha->quantidade_chaves >= ORDEM_ARVORE_B - 1){
+        return -1;  // no cheio
+    }
+
+    // busca para encontrar onde a nova chave sera inserida
+    int indice_insercao = 0;
+
+    while(indice_insercao < no_folha->quantidade_chaves && no_folha->chaves[indice_insercao] < chave){
+        indice_insercao++;
+    }
+    
+    // desloca as chaves existentes para a direita
+    for(i = no_folha->quantidade_chaves; i > indice_insercao; i--){
+        no_folha->chaves[i] = no_folha->chaves[i - 1];
+        no_folha->posicoes_arquivo[i] = no_folha->posicoes_arquivo[i - 1];
+    }
+
+    // insere a nova chave
+    no_folha->chaves[indice_insercao] = chave;
+    no_folha->posicoes_arquivo[indice_insercao] = posicao;
+    no_folha->quantidade_chaves++;  // incrementa o contador de chaves
+    
+    return indice_insercao;  // retorna o indice onde foi inserido
+}
+
+// constroi uma arvore b em memoria a partir do arquivo de dados ordenado
+void construir_arvore_b_do_arquivo(const char* arquivo_dados, ArvoreB* arvore){
+    int i, j, k;
+    FILE* arquivo = fopen(arquivo_dados, "rb");
+    if(!arquivo){
+        printf("Erro ao abrir arquivo de dados: %s\n", arquivo_dados);
+        return;
+    }
+
+    inicializar_arvore_b(arvore);
+    
+    Joia joia;
+    long posicao_arquivo = 0;  // posicao atual no arquivo
+    int total_inserido = 0;  // contador de registros inseridos na arvore
+    
+    // estrutura para armazenar todas as folhas criadas
+    NoArvoreB** folhas = NULL;
+    int capacidade_folhas = 1000;  // capacidade inicial
+    int total_folhas = 0;  // numero atual de folhas criadas
+    NoArvoreB* folha_atual = NULL;  // folha atual
+    
+    folhas =(NoArvoreB**)malloc(capacidade_folhas * sizeof(NoArvoreB*));
+    if(!folhas){
+        printf("ERRO: Falha ao alocar memoria para lista de folhas\n");
+        fclose(arquivo);
+        return;
+    }
+    
+    printf("Lendo arquivo e criando folhas...\n");
+    
+    int registros_lidos = 0;
+    int registros_ignorados = 0;
+    
+    // ler e criar todas as folhas
+    while(fread(&joia, sizeof(Joia), 1, arquivo) == 1){
+        registros_lidos++;
+        
+        if(joia.id_produto < 0){
+            registros_ignorados++;
+            posicao_arquivo++;
+            continue;
+        }
+        
+        // criar uma nova folha caso nao tenha folha atual ou esteja cheia
+        if(!folha_atual || folha_atual->quantidade_chaves >= ORDEM_ARVORE_B - 1){
+            folha_atual = criar_no_arvore_b(true);
+            if(!folha_atual){
+                printf("ERRO: Falha ao criar no folha\n");
+                fclose(arquivo);
+
+                // limpar memoria em caso de erro
+                for(i = 0; i < total_folhas; i++){
+                    destruir_arvore_b(folhas[i]);
+                }
+                free(folhas);
+                return;
+            }
+
+            // se o array de folhas esta cheio, dobrar sua capacidade
+            if(total_folhas >= capacidade_folhas){
+                capacidade_folhas *= 2;
+                NoArvoreB** novo_array =(NoArvoreB**)realloc(folhas, capacidade_folhas * sizeof(NoArvoreB*));
+                if(!novo_array){
+                    printf("ERRO: Falha ao realocar memoria\n");
+                    fclose(arquivo);
+                    for(i = 0; i < total_folhas; i++){
+                        destruir_arvore_b(folhas[i]);
+                    }
+                    free(folhas);
+                    return;
+                }
+                folhas = novo_array;
+            }
+            
+            // adiciona a nova folha ao array
+            folhas[total_folhas] = folha_atual;
+            total_folhas++;
+        }
+
+        // insere a chave na folha atual mantendo a ordenacao
+        int resultado = inserir_chave_no_folha(folha_atual, joia.id_produto, posicao_arquivo);
+        if(resultado == -1){
+            printf("ERRO: Falha ao inserir chave %lld na posicao %ld(folha cheia?)\n", joia.id_produto, posicao_arquivo);
+        }else{
+            total_inserido++;
+        }
+        posicao_arquivo++;
+
+        // mostrar progresso periodicamente
+        if(registros_lidos % 10000 == 0){
+            printf("Progresso: %d registros lidos, %d inseridos, %d folhas criadas\n", registros_lidos, total_inserido, total_folhas);
+        }
+    }
+    
+    printf("Total de registros lidos: %d\n", registros_lidos);
+    printf("Total de registros ignorados: %d\n", registros_ignorados);
+    printf("Total de registros inseridos: %d\n", total_inserido);
+    printf("Total de folhas criadas: %d\n", total_folhas);
+    
+    fclose(arquivo);
+    arvore->total_registros = total_inserido;
+
+    // se temos apenas uma folha, ela e a raiz
+    if(total_folhas == 1){
+        arvore->raiz = folhas[0];
+        printf("Arvore B criada com sucesso! Total de registros: %d\n", total_inserido);
+        return;
+    }
+    
+    // constroi os niveis internos de baixo para cima
+    printf("Criando estrutura de nos internos...\n");
+    printf("Total de folhas: %d, cada no interno pode ter %d filhos\n", total_folhas, ORDEM_ARVORE_B);
+
+    NoArvoreB** nivel_atual = folhas;  // comeca com as folhas atuais
+    int nos_no_nivel = total_folhas;  // numero de nos atuais
+    int nivel = 0;  // nivel atual
+    
+    NoArvoreB** nivel_anterior_array = NULL;  // array do nivel anterior
+    
+    // criar um nivel acima enquanto temos mais de um no atual
+    while(nos_no_nivel > 1){
+        nivel++;
+        int nos_proximo_nivel =(nos_no_nivel + ORDEM_ARVORE_B - 1) / ORDEM_ARVORE_B;
+
+        NoArvoreB** proximo_nivel =(NoArvoreB**)malloc(nos_proximo_nivel * sizeof(NoArvoreB*));
+        
+        if(!proximo_nivel){
+            printf("ERRO: Falha ao alocar memoria para nivel %d(%d nos)\n", nivel, nos_proximo_nivel);
+
+            // limpar memoria em caso de erro
+            if(nivel_anterior_array){
+                for(i = 0; i < nos_no_nivel; i++){
+                    destruir_arvore_b(nivel_atual[i]);
+                }
+                free(nivel_anterior_array);
+            }
+            for(i = 0; i < total_folhas; i++){
+                destruir_arvore_b(folhas[i]);
+            }
+            free(folhas);
+            return;
+        }
+    
+        // criar os nos internos do proximo nivel
+        for(i = 0; i < nos_proximo_nivel; i++){
+            NoArvoreB* no_interno = criar_no_arvore_b(false);
+            if(!no_interno){
+                printf("ERRO: Falha ao criar no interno\n");
+
+                // limpar memoria em caso de erro
+                for(j = 0; j < i; j++){
+                    destruir_arvore_b(proximo_nivel[j]);
+                }
+                free(proximo_nivel);
+                if(nivel > 1 && nivel_atual != folhas){
+                    free(nivel_atual);
+                }
+                for(j = 0; j < total_folhas; j++){
+                    destruir_arvore_b(folhas[j]);
+                }
+                free(folhas);
+                return;
+            }
+
+            // calcula quais filhos do nivel anterior este no interno vai agrupar
+            int inicio = i * ORDEM_ARVORE_B;
+            int fim = inicio + ORDEM_ARVORE_B;
+            if(fim > nos_no_nivel){
+                fim = nos_no_nivel;  // ajustar para nao ultrapassar o limite
+            }
+
+            if(inicio >= nos_no_nivel){
+                printf("ERRO: Indice inicio %d >= nos_no_nivel %d\n", inicio, nos_no_nivel);
+                destruir_arvore_b(no_interno);
+                free(proximo_nivel);
+                if(nivel_anterior_array){
+                    free(nivel_anterior_array);
+                }
+                for(j = 0; j < total_folhas; j++){
+                    destruir_arvore_b(folhas[j]);
+                }
+                free(folhas);
+                return;
+            }
+            
+            // primeiro filho sempre aponta para o primeiro no do grupo
+            no_interno->filhos[0] = nivel_atual[inicio];
+            int indice_chave = 0;  // indice para inserir no interno
+            int indice_filho = 1;  // indice para inserir no interno
+            
+            // inserir chave separadora a cada filho subsequente
+            for(j = inicio + 1; j < fim && indice_filho < ORDEM_ARVORE_B; j++){
+                if(j >= nos_no_nivel){
+                    break;
+                }
+
+                // obter a primeira chave do filho para usar como chave separadora
+                long long primeira_chave = 0;
+                if(nivel == 1){
+                    // se estamos criando o primeiro nivel interno, nivel_atual sao folhas
+                    if(nivel_atual[j] && nivel_atual[j]->eh_folha){
+                        for(k = 0; k < nivel_atual[j]->quantidade_chaves; k++){
+                            if(nivel_atual[j]->chaves[k] > 0){
+                                primeira_chave = nivel_atual[j]->chaves[k];
+                                break;
+                            }
+                        }
+                    }
+                }else{
+                    // se estamos criando niveis superiores, nivel_atual sao nos internos
+                    if(nivel_atual[j] && !nivel_atual[j]->eh_folha && nivel_atual[j]->quantidade_chaves > 0){
+                        primeira_chave = nivel_atual[j]->chaves[0];
+                    }
+                }
+                
+                // inserir a chave separadora e o filho correspondente
+                if(primeira_chave > 0 && indice_chave < ORDEM_ARVORE_B - 1){
+                    no_interno->chaves[indice_chave] = primeira_chave;
+                    no_interno->filhos[indice_filho] = nivel_atual[j];
+                    no_interno->quantidade_chaves++;
+                    indice_chave++;
+                    indice_filho++;
+                }else{
+                    // se nao conseguimos obter uma chave valida, apenas adiciona o filho
+                    no_interno->filhos[indice_filho] = nivel_atual[j];
+                    indice_filho++;
+                }
+            }
+            
+            proximo_nivel[i] = no_interno;
+        }
+    
+        // liberar o array do nivel anterior
+        if(nivel_anterior_array && nivel_anterior_array != folhas){
+            free(nivel_anterior_array);
+            nivel_anterior_array = NULL;
+        }
+        // atualizar para a proxima iteracao
+        nivel_anterior_array = nivel_atual;  // guardar referencia para liberar depois
+        nivel_atual = proximo_nivel;  // avancar para o proximo nivel
+        nos_no_nivel = nos_proximo_nivel;
+        
+        printf("Nivel %d criado com %d nos\n", nivel, nos_no_nivel);
+
+        if(nos_no_nivel <= 0){
+            printf("ERRO: nos_no_nivel <= 0!\n");
+            break;
+        }
+
+        // se chegamos a 1 no, ele eh a raiz
+        if(nos_no_nivel == 1){
+            break;
+        }
+    }
+    
+    // deve ter 1 no
+    if(nos_no_nivel != 1){
+        printf("ERRO: Esperado 1 no restante, mas temos %d\n", nos_no_nivel);
+        // limpar memoria em caso de erro
+        if(nivel_anterior_array && nivel_anterior_array != folhas){
+            free(nivel_anterior_array);
+        }
+        if(nivel_atual && nivel_atual != folhas){
+            for(i = 0; i < nos_no_nivel; i++){
+                if(nivel_atual[i]) destruir_arvore_b(nivel_atual[i]);
+            }
+            free(nivel_atual);
+        }
+        for(i = 0; i < total_folhas; i++){
+            destruir_arvore_b(folhas[i]);
+        }
+        free(folhas);
+        return;
+    }
+
+    // liberar o array do nivel anterior se ainda existir
+    if(nivel_anterior_array && nivel_anterior_array != folhas){
+        free(nivel_anterior_array);
+    }
+    
+    // o unico no restante eh a raiz
+    arvore->raiz = nivel_atual[0];
+
+    // liberar o array do ultimo nivel
+    if(nivel_atual != folhas){
+        free(nivel_atual);
+    }
+
+    // liberar o array de folhas
+    free(folhas);
+
+    printf("Arvore B criada com sucesso! Total de registros: %d, Total de folhas: %d, Niveis: %d\n", 
+           total_inserido, total_folhas, nivel + 1);
+}
+
+// mostra recursivamente a estrutura da arvore b usando percorrimento em profundidade
+void mostrar_arvore_b_recursivo(NoArvoreB* no, int nivel){
+    int i;
+    if(!no) return;
+
+    // indentacao baseada no nivel
+    for(i = 0; i < nivel; i++){
+        printf("  ");
+    }
+    
+    if(no->eh_folha){
+        // mostra as chaves e posicoes do arquivo em um no folha
+        printf("[FOLHA: ");
+        for(i = 0; i < no->quantidade_chaves; i++){
+            printf("%lld(%ld) ", no->chaves[i], no->posicoes_arquivo[i]);
+        }
+        printf("]\n");
+    } else{
+        // mostra as chaves separadoras em um no interno
+        printf("[INTERNO: ");
+        for(i = 0; i < no->quantidade_chaves; i++){
+            printf("%lld ", no->chaves[i]);
+        }
+        printf("]\n");
+        // recursivamente mostra todos os filhos deste no interno
+        for(i = 0; i <= no->quantidade_chaves; i++){
+            if(no->filhos[i]){
+                mostrar_arvore_b_recursivo(no->filhos[i], nivel + 1);
+            }
+        }
+    }
+}
+
+// conta recursivamente o numero de folhas na arvore b
+int contar_folhas_arvore_b(NoArvoreB* no){
+    int i, total = 0;
+    if(!no){
+        return 0;
+    }
+
+    if(no->eh_folha){
+        return 1;
+    }
+
+    // soma o numero de folhas em cada subarvore filha
+    for(i = 0; i <= no->quantidade_chaves; i++){
+        if(no->filhos[i]){
+            total += contar_folhas_arvore_b(no->filhos[i]);
+        }
+    }
+    return total;
+}
+
+// conta recursivamente o numero total de chaves armazenadas em todas as folhas
+int contar_chaves_arvore_b(NoArvoreB* no){
+    int i, total = 0;
+    if(!no){
+        return 0;
+    }
+    
+    // se eh uma folha, retorna o numero de chaves nela
+    if(no->eh_folha){
+        return no->quantidade_chaves;
+    }
+    
+    // soma o numero de chaves em todas as folhas das subarvores filhas
+    for(i = 0; i <= no->quantidade_chaves; i++){
+        if(no->filhos[i]){
+            total += contar_chaves_arvore_b(no->filhos[i]);
+        }
+    }
+    return total;
+}
+
+// mostra informacoes sobre a estrutura da arvore b e sua organizacao hierarquica
+void mostrar_arvore_b(ArvoreB* arvore){
+    if(!arvore || !arvore->raiz){
+        printf("Arvore B vazia.\n");
+        return;
+    }
+    
+    printf("\n=== ESTRUTURA DA ARVORE B ===\n");
+    printf("Total de registros indexados(contador): %d\n", arvore->total_registros);
+    
+    // calcula estatisticas da arvore usando funcoes recursivas
+    int total_folhas = contar_folhas_arvore_b(arvore->raiz);
+    int total_chaves = contar_chaves_arvore_b(arvore->raiz);
+    printf("Total de folhas na arvore: %d\n", total_folhas);
+    printf("Total de chaves nas folhas: %d\n", total_chaves);
+    
+    // o numero de chaves deve corresponder ao numero de registros indexados
+    if(total_chaves != arvore->total_registros){
+        printf("*** ATENCAO: Contador de registros(%d) diferente do total de chaves(%d)!\n", 
+               arvore->total_registros, total_chaves);
+    }
+    
+    // mostra a estrutura hierarquica completa da arvore
+    printf("\nEstrutura da arvore:\n");
+    mostrar_arvore_b_recursivo(arvore->raiz, 0);
+    printf("\n");
+}
+
+// consulta uma joia usando a arvore b como indice em memoria
+void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, long long id_produto){
+    if(!arvore || !arvore->raiz){
+        printf("Arvore B nao foi inicializada.\n");
+        return;
+    }
+
+    // buscar a chave na arvore b para obter a posicao no arquivo
+    long posicao = buscar_posicao_na_arvore_b(arvore, id_produto);
+    
+    if(posicao == -1){
+        printf("Joia com ID Produto %lld nao encontrada na arvore B.\n", id_produto);
+        printf("Tente usar a opcao 4(Busca binaria direta) para verificar se o registro existe.\n");
+        return;
+    }
+    
+    // abrir o arquivo de dados e posicionar no registro encontrado
+    FILE* arquivo = fopen(arquivo_dados, "rb");
+    if(!arquivo){
+        printf("Erro ao abrir arquivo de dados: %s\n", arquivo_dados);
+        return;
+    }
+
+    // acesso direto ao registro usando a posicao retornada pela busca na arvore
+    fseek(arquivo, posicao * sizeof(Joia), SEEK_SET);
+    
+    // ler o registro do arquivo e exibir os dados
+    Joia joia;
+    if(fread(&joia, sizeof(Joia), 1, arquivo) == 1){
+        printf("\n=== JOIA ENCONTRADA(via Arvore B) ===\n");
+        printf("ID Produto: %lld\n", joia.id_produto);
+        printf("ID Categoria: %lld\n", joia.id_categoria);
+        printf("Categoria: %s\n", joia.alias_categoria);
+        printf("ID Marca: %lld\n", joia.id_marca);
+        printf("Preco: $%.2f\n", joia.preco);
+        printf("Genero: %s\n", joia.genero);
+        printf("Cor: %s\n", joia.cor);
+        printf("Material: %s\n", joia.material);
+        printf("Pedra Preciosa: %s\n", joia.pedra_preciosa);
+        printf("Posicao no arquivo: %ld\n", posicao);
+    } else{
+        printf("Erro ao ler registro do arquivo.\n");
+    }
+    
+    fclose(arquivo);
+}
