@@ -131,4 +131,11 @@ int buscar_posicao_na_arvore_b(ArvoreB* arvore, long long chave_busca);
 void construir_arvore_b_do_arquivo(const char* arquivo_dados, ArvoreB* arvore);
 void mostrar_arvore_b(ArvoreB* arvore);
 void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, long long id_produto);
+
+// funcoes para criptografia
+void gerar_permutacao(const char* chave, int* permutacao, int tamanho);
+void aplicar_permutacao(void* registro, int tamanho, int* permutacao);
+int validar_registro(Joia* joia);
+int criptografar_joias(const char* arquivo_origem, const char* arquivo_destino, const char* chave);
+int descriptografar_joias(const char* arquivo_criptografado, const char* arquivo_destino, const char* chave);
 #endif

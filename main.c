@@ -25,6 +25,8 @@ void mostrar_menu() {
     printf("19. Criar arvore B em memoria para joias\n");
     printf("20. Buscar joia usando arvore B\n");
     printf("21. Mostrar estrutura da arvore B\n");
+    printf("22. Criptografar joias\n");
+    printf("23. Descriptografar joias\n");
     printf("0. Sair\n");
     printf("Escolha uma opcao: ");
 }
@@ -209,6 +211,52 @@ int main() {
                     break;
                 }
                 mostrar_arvore_b(&arvore_joias);
+                break;
+            }
+
+            case 22: {
+                char chave[256];
+                printf("\n=== CRIPTOGRAFAR JOIAS ===\n");
+                printf("Digite a chave para criptografia: ");
+                getchar(); // consumir \n anterior
+                fgets(chave, sizeof(chave), stdin);
+                // Remover quebra de linha
+                chave[strcspn(chave, "\n")] = '\0';
+                
+                if (strlen(chave) == 0) {
+                    printf("Erro: Chave nao pode estar vazia!\n");
+                    break;
+                }
+                
+                int resultado = criptografar_joias("joias.dat", "joias_criptografado.dat", chave);
+                if (resultado >= 0) {
+                    printf("Criptografia concluida com sucesso!\n");
+                } else {
+                    printf("Erro ao criptografar arquivo.\n");
+                }
+                break;
+            }
+
+            case 23: {
+                char chave[256];
+                printf("\n=== DESCRIPTOGRAFAR JOIAS ===\n");
+                printf("Digite a chave para descriptografia: ");
+                getchar(); // consumir \n anterior
+                fgets(chave, sizeof(chave), stdin);
+                // Remover quebra de linha
+                chave[strcspn(chave, "\n")] = '\0';
+                
+                if (strlen(chave) == 0) {
+                    printf("Erro: Chave nao pode estar vazia!\n");
+                    break;
+                }
+                
+                int resultado = descriptografar_joias("joias_criptografado.dat", "joias_descriptografado.dat", chave);
+                if (resultado >= 0) {
+                    printf("Descriptografia concluida com sucesso!\n");
+                } else {
+                    printf("Erro ao descriptografar arquivo. Verifique se a chave esta correta.\n");
+                }
                 break;
             }
 

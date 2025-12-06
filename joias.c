@@ -1812,3 +1812,211 @@ void consultar_joia_por_arvore_b(ArvoreB* arvore, const char* arquivo_dados, lon
     
     fclose(arquivo);
 }
+
+// funcoes para criptografia
+unsigned long long hash_chave(const char* chave) {
+    unsigned long long hash = 5381;
+    int c;
+    while ((c = *chave++)) {
+        hash = ((hash << 5) + hash) + c;
+    }
+    return hash;
+}
+
+unsigned int lcg(unsigned long long* seed) {
+    *seed = (*seed * 1103515245ULL + 12345ULL) & 0x7FFFFFFF;
+    return (unsigned int)(*seed);
+}
+
+void gerar_permutacao(const char* chave, int* permutacao, int tamanho) {
+    for (int i = 0; i < tamanho; i++) {
+        permutacao[i] = i;
+    }
+    
+    unsigned long long seed = hash_chave(chave);
+    
+    for (int i = tamanho - 1; i > 0; i--) {
+        unsigned int j = lcg(&seed) % (i + 1);
+        int temp = permutacao[i];
+        permutacao[i] = permutacao[j];
+        permutacao[j] = temp;
+    }
+}
+
+void aplicar_permutacao(void* registro, int tamanho, int* permutacao) {
+    unsigned char* bytes = (unsigned char*)registro;
+    unsigned char* temp = (unsigned char*)malloc(tamanho);
+    if (!temp) {
+        printf("Erro de memoria ao aplicar permutacao\n");
+        return;
+    }
+    
+    for (int i = 0; i < tamanho; i++) {
+        temp[i] = bytes[permutacao[i]];
+    }
+    
+    memcpy(bytes, temp, tamanho);
+    free(temp);
+}
+
+int validar_registro(Joia* joia) {
+    if (joia->id_produto < -1) return 0;
+    if (joia->id_categoria < -1) return 0;
+    if (joia->id_marca < -1) return 0;
+    
+    if (joia->preco < 0 && joia->id_produto != -1) return 0;
+    
+    for (int i = 0; i < TAM_CATEGORIA; i++) {
+        if (joia->alias_categoria[i] != '\0' && joia->alias_categoria[i] != ' ' && 
+            (joia->alias_categoria[i] < 32 || joia->alias_categoria[i] > 126)) {
+            return 0;
+        }
+    }
+    
+    for (int i = 0; i < TAM_GENERO; i++) {
+        if (joia->genero[i] != '\0' && joia->genero[i] != ' ' && 
+            (joia->genero[i] < 32 || joia->genero[i] > 126)) {
+            return 0;
+        }
+    }
+    
+    for (int i = 0; i < TAM_COR; i++) {
+        if (joia->cor[i] != '\0' && joia->cor[i] != ' ' && 
+            (joia->cor[i] < 32 || joia->cor[i] > 126)) {
+            return 0;
+        }
+    }
+    
+    for (int i = 0; i < TAM_MATERIAL; i++) {
+        if (joia->material[i] != '\0' && joia->material[i] != ' ' && 
+            (joia->material[i] < 32 || joia->material[i] > 126)) {
+            return 0;
+        }
+    }
+    
+    for (int i = 0; i < TAM_GEMSTONE; i++) {
+        if (joia->pedra_preciosa[i] != '\0' && joia->pedra_preciosa[i] != ' ' && 
+            (joia->pedra_preciosa[i] < 32 || joia->pedra_preciosa[i] > 126)) {
+            return 0;
+        }
+    }
+    
+    return 1;
+}
+
+// Criptografar arquivo de joias
+int criptografar_joias(const char* arquivo_origem, const char* arquivo_destino, const char* chave) {
+    FILE* origem = fopen(arquivo_origem, "rb");
+    if (!origem) {
+        printf("Erro ao abrir arquivo de origem: %s\n", arquivo_origem);
+        return -1;
+    }
+    
+    FILE* destino = fopen(arquivo_destino, "wb");
+    if (!destino) {
+        printf("Erro ao criar arquivo de destino: %s\n", arquivo_destino);
+        fclose(origem);
+        return -1;
+    }
+    
+    int tamanho_registro = sizeof(Joia);
+    int* permutacao = (int*)malloc(tamanho_registro * sizeof(int));
+    if (!permutacao) {
+        printf("Erro de memoria\n");
+        fclose(origem);
+        fclose(destino);
+        return -1;
+    }
+    
+    gerar_permutacao(chave, permutacao, tamanho_registro);
+    
+    Joia joia;
+    int contador = 0;
+    
+    while (fread(&joia, sizeof(Joia), 1, origem) == 1) {
+        aplicar_permutacao(&joia, tamanho_registro, permutacao);
+        fwrite(&joia, sizeof(Joia), 1, destino);
+        contador++;
+    }
+    
+    free(permutacao);
+    fclose(origem);
+    fclose(destino);
+    
+    printf("Criptografadas %d joias no arquivo %s\n", contador, arquivo_destino);
+    return contador;
+}
+
+// Descriptografar arquivo de joias
+int descriptografar_joias(const char* arquivo_criptografado, const char* arquivo_destino, const char* chave) {
+    FILE* criptografado = fopen(arquivo_criptografado, "rb");
+    if (!criptografado) {
+        printf("Erro ao abrir arquivo criptografado: %s\n", arquivo_criptografado);
+        return -1;
+    }
+    
+    FILE* destino = fopen(arquivo_destino, "wb");
+    if (!destino) {
+        printf("Erro ao criar arquivo de destino: %s\n", arquivo_destino);
+        fclose(criptografado);
+        return -1;
+    }
+    
+    int tamanho_registro = sizeof(Joia);
+    int* permutacao = (int*)malloc(tamanho_registro * sizeof(int));
+    int* permutacao_inversa = (int*)malloc(tamanho_registro * sizeof(int));
+    
+    if (!permutacao || !permutacao_inversa) {
+        printf("Erro de memoria\n");
+        fclose(criptografado);
+        fclose(destino);
+        free(permutacao);
+        free(permutacao_inversa);
+        return -1;
+    }
+    
+    gerar_permutacao(chave, permutacao, tamanho_registro);
+    
+    for (int i = 0; i < tamanho_registro; i++) {
+        permutacao_inversa[permutacao[i]] = i;
+    }
+    
+    Joia joia;
+    int contador = 0;
+    int registros_invalidos = 0;
+    
+    while (fread(&joia, sizeof(Joia), 1, criptografado) == 1) {
+        aplicar_permutacao(&joia, tamanho_registro, permutacao_inversa);
+        
+        if (!validar_registro(&joia)) {
+            registros_invalidos++;
+            if (registros_invalidos > contador / 2 && contador > 10) {
+                printf("ERRO: Chave incorreta! Muitos registros invalidos detectados.\n");
+                free(permutacao);
+                free(permutacao_inversa);
+                fclose(criptografado);
+                fclose(destino);
+                return -1;
+            }
+        }
+        
+        fwrite(&joia, sizeof(Joia), 1, destino);
+        contador++;
+    }
+    
+    if (contador > 0 && (double)registros_invalidos / contador > 0.3) {
+        printf("AVISO: %d de %d registros invalidos. A chave pode estar incorreta.\n", 
+               registros_invalidos, contador);
+    }
+    
+    free(permutacao);
+    free(permutacao_inversa);
+    fclose(criptografado);
+    fclose(destino);
+    
+    printf("Descriptografadas %d joias no arquivo %s\n", contador, arquivo_destino);
+    if (registros_invalidos > 0) {
+        printf("AVISO: %d registros com dados invalidos (podem ser registros removidos)\n", registros_invalidos);
+    }
+    return contador;
+}
